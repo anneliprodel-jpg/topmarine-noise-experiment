@@ -69,7 +69,7 @@ Would additional flotation be needed near the booms?
 Best regards
 """
 
-# Requested order: old 1, 11, 5, 6, 7, 8, 9, 3, 4, 10, 2
+# Requested order: old 1, 11, 5, 6, 7, 8, 9, 3, 4, 2, 10
 SLIDES = [
     "Customer request",
     "All offers",
@@ -80,8 +80,8 @@ SLIDES = [
     "Other equipment",
     "Price reveal",
     "Price noise",
-    "Final reveal",
     "Expected noise",
+    "Final reveal",
 ]
 
 
@@ -187,6 +187,7 @@ def nav_buttons():
             st.rerun()
 
 
+st.sidebar.image("topmarine_logo.png", use_container_width=True)
 st.sidebar.title("Noise Experiment")
 uploaded = st.sidebar.file_uploader("Upload completed Excel file", type=["xlsx"], help="Use the Top_Marine_Noise_Experiment_Offers.xlsx template.")
 st.sidebar.caption("Use the arrows at the bottom of each slide to move through the presentation.")
