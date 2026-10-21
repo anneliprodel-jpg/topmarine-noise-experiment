@@ -1,20 +1,87 @@
+
+import io
+import math
+from collections import Counter
+
+import pandas as pd
+import plotly.express as px
 import streamlit as st
 
 st.set_page_config(
     page_title="Top Marine Noise Experiment",
     page_icon="⚓",
-    layout="wide"
+    layout="wide",
 )
 
-st.title("Top Marine Noise Experiment")
-st.caption("Same customer request. Different decisions.")
-
-st.divider()
-
-st.header("Customer request")
-
-st.info(
+# -----------------------------
+# Styling
+# -----------------------------
+st.markdown(
     """
+    <style>
+    .block-container {padding-top: 1.2rem; padding-bottom: 2rem;}
+    h1, h2, h3 {letter-spacing: -0.02em;}
+    .tm-kpi {
+        border: 1px solid rgba(120,120,120,.25);
+        border-radius: 18px;
+        padding: 18px 20px;
+        background: rgba(255,255,255,.02);
+        min-height: 128px;
+    }
+    .tm-kpi-label {
+        font-size: 0.9rem;
+        opacity: 0.72;
+        margin-bottom: 8px;
+    }
+    .tm-kpi-value {
+        font-size: 2.15rem;
+        font-weight: 700;
+        line-height: 1.0;
+    }
+    .tm-kpi-sub {
+        font-size: 0.82rem;
+        opacity: 0.62;
+        margin-top: 9px;
+    }
+    .tm-request {
+        border-left: 5px solid #5f6b7a;
+        padding: 18px 24px;
+        border-radius: 0 16px 16px 0;
+        background: rgba(120,120,120,.08);
+        font-size: 1.05rem;
+        line-height: 1.6;
+    }
+    .tm-big {
+        font-size: 4rem;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+        line-height: 1;
+    }
+    .tm-center {
+        text-align: center;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# -----------------------------
+# Constants
+# -----------------------------
+EXPECTED_COLUMNS = [
+    "Dealer ID",
+    "Pontoon solution",
+    "Pontoon measurements",
+    "Gangway measurements",
+    "Booms",
+    "Anchoring solution",
+    "Other equipment",
+    "Transport & installation EUR",
+    "Total price EUR",
+    "Expected difference %",
+]
+
+CUSTOMER_REQUEST = """
 Hi,
 
 I am looking for a floating pontoon to extend an existing fixed pier.
@@ -33,93 +100,470 @@ Would additional flotation be needed near the booms?
 
 Best regards
 """
-)
 
-st.divider()
+# -----------------------------
+# Helpers
+# -----------------------------
+def clean_text(value):
+    if pd.isna(value):
+        return ""
+    return str(value).strip()
 
-st.header("Prepare your offer")
+def parse_percent(value):
+    if pd.isna(value) or value == "":
+        return math.nan
+    if isinstance(value, str):
+        value = value.replace("%", "").replace(",", ".").strip()
+    try:
+        number = float(value)
+    except Exception:
+        return math.nan
+    # Accept either 25 or 0.25
+    if 0 <= number <= 1:
+        number *= 100
+    return number
 
-with st.form("dealer_offer"):
+def format_eur(value):
+    if pd.isna(value):
+        return "—"
+    return f"€{value:,.0f}".replace(",", " ")
 
-    dealer = st.text_input(
-        "Dealer / Country",
-        placeholder="Example: Finland"
-    )
+def normalize_label(value):
+    text = clean_text(value)
+    return text if text else "Not specified"
 
-    pontoon_solution = st.text_input(
-        "Recommended pontoon solution",
-        placeholder="Example: SP, BP, LDP, MDP..."
-    )
+def load_excel(file_bytes):
+    raw = pd.read_excel(io.BytesIO(file_bytes), sheet_name="Offers", header=None)
 
-    pontoon_dimensions = st.text_input(
-        "Pontoon dimensions",
-        placeholder="Example: 2.4 × 9 m"
-    )
+    header_row = None
+    for i in range(min(len(raw), 20)):
+        row_values = [clean_text(v) for v in raw.iloc[i].tolist()]
+        if "Dealer ID" in row_values and "Total price EUR" in row_values:
+            header_row = i
+            break
 
-    gangway = st.text_input(
-        "Gangway + dimensions",
-        placeholder="Example: aluminium gangway 1.2 × 6 m"
-    )
+    if header_row is None:
+        raise ValueError("Could not find the Offers table header row.")
 
-    booms = st.text_input(
-        "Booms",
-        placeholder="Type, quantity and dimensions"
-    )
+    df = pd.read_excel(io.BytesIO(file_bytes), sheet_name="Offers", header=header_row)
 
-    anchoring = st.text_area(
-        "Anchoring solution",
-        placeholder="Describe the anchoring solution you would offer"
-    )
-
-    other_equipment = st.text_area(
-        "Other equipment you consider necessary",
-        placeholder="Ladder, cleats, fenders, additional floats, etc."
-    )
-
-    total_price = st.number_input(
-        "Total price, EUR excl. VAT",
-        min_value=0.0,
-        step=100.0,
-        format="%.2f"
-    )
-
-    predicted_difference = st.slider(
-        "How different do you think the lowest and highest total offers will be?",
-        min_value=0,
-        max_value=200,
-        value=25,
-        step=5,
-        format="%d%%"
-    )
-
-    submitted = st.form_submit_button(
-        "Submit offer",
-        use_container_width=True
-    )
-
-if submitted:
-    st.success("Offer submitted.")
-
-    st.subheader("Your offer summary")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.write("**Dealer / Country:**", dealer)
-        st.write("**Recommended pontoon solution:**", pontoon_solution)
-        st.write("**Pontoon dimensions:**", pontoon_dimensions)
-        st.write("**Gangway:**", gangway)
-        st.write("**Booms:**", booms)
-
-    with col2:
-        st.write("**Anchoring solution:**", anchoring)
-        st.write("**Other equipment:**", other_equipment)
-        st.write(f"**Total price:** €{total_price:,.2f}")
-        st.write(
-            f"**Expected difference between lowest and highest offer:** "
-            f"{predicted_difference}%"
+    missing = [c for c in EXPECTED_COLUMNS if c not in df.columns]
+    if missing:
+        raise ValueError(
+            "The Excel structure does not match the expected template. "
+            f"Missing columns: {', '.join(missing)}"
         )
 
-    st.warning(
-        "Do not discuss your offer with the other dealers before the results are revealed."
+    df = df[EXPECTED_COLUMNS].copy()
+
+    # Keep only rows with a dealer ID or any entered offer data
+    data_cols = [c for c in EXPECTED_COLUMNS if c != "Dealer ID"]
+    has_any_data = df[data_cols].notna().any(axis=1)
+    has_id = df["Dealer ID"].notna()
+    df = df[has_any_data | has_id].copy()
+
+    # Remove prefilled but completely empty placeholder dealer rows
+    offer_fields = [
+        "Pontoon solution",
+        "Pontoon measurements",
+        "Gangway measurements",
+        "Booms",
+        "Anchoring solution",
+        "Other equipment",
+        "Transport & installation EUR",
+        "Total price EUR",
+        "Expected difference %",
+    ]
+    df = df[df[offer_fields].notna().any(axis=1)].copy()
+
+    if df.empty:
+        return df
+
+    # Fill missing dealer IDs
+    for idx in df.index:
+        if not clean_text(df.at[idx, "Dealer ID"]):
+            df.at[idx, "Dealer ID"] = f"D{idx+1:02d}"
+
+    # Numeric conversion
+    for col in ["Transport & installation EUR", "Total price EUR"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    df["Expected difference %"] = df["Expected difference %"].apply(parse_percent)
+
+    # Clean text
+    for col in [
+        "Dealer ID",
+        "Pontoon solution",
+        "Pontoon measurements",
+        "Gangway measurements",
+        "Booms",
+        "Anchoring solution",
+        "Other equipment",
+    ]:
+        df[col] = df[col].apply(clean_text)
+
+    return df.reset_index(drop=True)
+
+def kpi(label, value, sub=""):
+    st.markdown(
+        f"""
+        <div class="tm-kpi">
+            <div class="tm-kpi-label">{label}</div>
+            <div class="tm-kpi-value">{value}</div>
+            <div class="tm-kpi-sub">{sub}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+def section_title(number, title, subtitle=None):
+    st.caption(f"RESULT {number}")
+    st.title(title)
+    if subtitle:
+        st.write(subtitle)
+
+def categorical_chart(df, column, title):
+    counts = (
+        df[column]
+        .apply(normalize_label)
+        .value_counts()
+        .rename_axis(column)
+        .reset_index(name="Dealers")
+    )
+    fig = px.bar(
+        counts,
+        x="Dealers",
+        y=column,
+        orientation="h",
+        text="Dealers",
+        title=title,
+    )
+    fig.update_layout(
+        showlegend=False,
+        height=max(380, 45 * len(counts) + 120),
+        margin=dict(l=10, r=20, t=70, b=20),
+        yaxis_title="",
+        xaxis_title="Number of dealers",
+    )
+    fig.update_traces(textposition="outside", cliponaxis=False)
+    return fig
+
+# -----------------------------
+# Sidebar / data source
+# -----------------------------
+st.sidebar.title("Noise Experiment")
+st.sidebar.caption("Excel → presentation")
+
+uploaded = st.sidebar.file_uploader(
+    "Upload completed Excel file",
+    type=["xlsx"],
+    help="Use the Top_Marine_Noise_Experiment_Offers.xlsx template.",
+)
+
+st.sidebar.markdown("---")
+st.sidebar.write("The app reads all completed dealer rows automatically. The number of dealers is not fixed.")
+
+if uploaded is None:
+    st.title("Top Marine Noise Experiment")
+    st.subheader("Presentation dashboard")
+    st.info(
+        "Upload the completed **Top_Marine_Noise_Experiment_Offers.xlsx** file from the sidebar."
+    )
+    st.markdown(
+        """
+        The presentation will then build automatically from the dealer offers:
+        **price noise, expected vs actual noise, pontoon solutions, dimensions,
+        gangways, booms, anchoring and other equipment.**
+        """
+    )
+    st.stop()
+
+try:
+    df = load_excel(uploaded.getvalue())
+except Exception as exc:
+    st.error(str(exc))
+    st.stop()
+
+if df.empty:
+    st.warning("The Excel file contains no completed dealer offers yet.")
+    st.stop()
+
+price_df = df.dropna(subset=["Total price EUR"]).copy()
+n_dealers = len(df)
+
+# -----------------------------
+# Navigation
+# -----------------------------
+pages = [
+    "1 · Customer request",
+    "2 · Expected noise",
+    "3 · Price reveal",
+    "4 · Price noise",
+    "5 · Pontoon solutions",
+    "6 · Pontoon measurements",
+    "7 · Gangways & booms",
+    "8 · Anchoring",
+    "9 · Other equipment",
+    "10 · Final reveal",
+    "11 · All offers",
+]
+page = st.sidebar.radio("Presentation", pages)
+
+st.sidebar.markdown("---")
+st.sidebar.metric("Offers loaded", n_dealers)
+if not price_df.empty:
+    st.sidebar.metric("Offers with price", len(price_df))
+
+# -----------------------------
+# Page 1
+# -----------------------------
+if page == pages[0]:
+    st.title("Same customer. Same request.")
+    st.subheader("How different will the decisions be?")
+    st.markdown(f'<div class="tm-request">{CUSTOMER_REQUEST.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
+
+    st.markdown("### Prepare your offer")
+    offer_items = [
+        "Recommended pontoon solution",
+        "Pontoon measurements",
+        "Gangway + measurements",
+        "Booms",
+        "Anchoring solution",
+        "Other equipment you consider necessary",
+        "Transport & installation",
+        "Total price, EUR excl. VAT",
+    ]
+    for item in offer_items:
+        st.write(f"• {item}")
+
+# -----------------------------
+# Page 2
+# -----------------------------
+elif page == pages[1]:
+    section_title(1, "How much noise did we expect?", "Dealer estimates before seeing anyone else's offer.")
+
+    expected = df["Expected difference %"].dropna()
+    if expected.empty:
+        st.warning("No expected-difference estimates have been entered.")
+    else:
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            kpi("Average expected difference", f"{expected.mean():.0f}%")
+        with c2:
+            kpi("Lowest expectation", f"{expected.min():.0f}%")
+        with c3:
+            kpi("Highest expectation", f"{expected.max():.0f}%")
+
+        exp_df = df.dropna(subset=["Expected difference %"])[["Dealer ID", "Expected difference %"]].sort_values("Expected difference %")
+        fig = px.bar(
+            exp_df,
+            x="Expected difference %",
+            y="Dealer ID",
+            orientation="h",
+            text=exp_df["Expected difference %"].map(lambda x: f"{x:.0f}%"),
+        )
+        fig.update_layout(
+            height=max(450, 34 * len(exp_df) + 130),
+            showlegend=False,
+            xaxis_title="Expected difference between lowest and highest offer (%)",
+            yaxis_title="",
+        )
+        fig.update_traces(textposition="outside", cliponaxis=False)
+        st.plotly_chart(fig, use_container_width=True)
+
+# -----------------------------
+# Page 3
+# -----------------------------
+elif page == pages[2]:
+    section_title(2, "The price reveal", "Same customer request. Different total prices.")
+
+    if price_df.empty:
+        st.warning("No total prices have been entered.")
+    else:
+        plot_df = price_df[["Dealer ID", "Total price EUR"]].sort_values("Total price EUR")
+        fig = px.bar(
+            plot_df,
+            x="Total price EUR",
+            y="Dealer ID",
+            orientation="h",
+            text=plot_df["Total price EUR"].map(format_eur),
+        )
+        fig.update_layout(
+            height=max(520, 34 * len(plot_df) + 150),
+            showlegend=False,
+            xaxis_title="Total price, EUR excl. VAT",
+            yaxis_title="",
+        )
+        fig.update_traces(textposition="outside", cliponaxis=False)
+        st.plotly_chart(fig, use_container_width=True)
+
+# -----------------------------
+# Page 4
+# -----------------------------
+elif page == pages[3]:
+    section_title(3, "Price noise", "How far apart were the offers?")
+
+    if price_df.empty:
+        st.warning("No total prices have been entered.")
+    else:
+        prices = price_df["Total price EUR"]
+        min_price = prices.min()
+        max_price = prices.max()
+        avg_price = prices.mean()
+        median_price = prices.median()
+        spread_eur = max_price - min_price
+        spread_pct = (spread_eur / min_price * 100) if min_price > 0 else math.nan
+        cv = (prices.std(ddof=1) / avg_price * 100) if len(prices) > 1 and avg_price > 0 else math.nan
+
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            kpi("Lowest offer", format_eur(min_price))
+        with c2:
+            kpi("Highest offer", format_eur(max_price))
+        with c3:
+            kpi("Average offer", format_eur(avg_price))
+        with c4:
+            kpi("Median offer", format_eur(median_price))
+
+        st.write("")
+        c5, c6, c7 = st.columns(3)
+        with c5:
+            kpi("Price spread", format_eur(spread_eur), "Highest − lowest")
+        with c6:
+            kpi("Actual price noise", f"{spread_pct:.0f}%" if not math.isnan(spread_pct) else "—", "Spread vs. lowest offer")
+        with c7:
+            kpi("Coefficient of variation", f"{cv:.1f}%" if not math.isnan(cv) else "—", "Relative dispersion around the average")
+
+# -----------------------------
+# Page 5
+# -----------------------------
+elif page == pages[4]:
+    section_title(4, "What did we actually offer?", "The first source of noise may appear before pricing even begins.")
+    st.plotly_chart(
+        categorical_chart(df, "Pontoon solution", "Recommended pontoon solutions"),
+        use_container_width=True,
+    )
+
+    counts = df["Pontoon solution"].apply(normalize_label).value_counts()
+    if len(counts) > 1:
+        st.info(f"{len(counts)} different pontoon solution labels were used across {n_dealers} offers.")
+
+# -----------------------------
+# Page 6
+# -----------------------------
+elif page == pages[5]:
+    section_title(5, "Pontoon measurements", "Did we interpret the required floating section in the same way?")
+
+    show_df = df[["Dealer ID", "Pontoon solution", "Pontoon measurements"]].copy()
+    show_df["Pontoon solution"] = show_df["Pontoon solution"].apply(normalize_label)
+    show_df["Pontoon measurements"] = show_df["Pontoon measurements"].apply(normalize_label)
+    st.dataframe(show_df, use_container_width=True, hide_index=True)
+
+# -----------------------------
+# Page 7
+# -----------------------------
+elif page == pages[6]:
+    section_title(6, "Gangways & booms", "A technically similar brief can still produce very different equipment choices.")
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.subheader("Gangway measurements")
+        gang = df[["Dealer ID", "Gangway measurements"]].copy()
+        gang["Gangway measurements"] = gang["Gangway measurements"].apply(normalize_label)
+        st.dataframe(gang, use_container_width=True, hide_index=True)
+    with c2:
+        st.subheader("Booms")
+        booms = df[["Dealer ID", "Booms"]].copy()
+        booms["Booms"] = booms["Booms"].apply(normalize_label)
+        st.dataframe(booms, use_container_width=True, hide_index=True)
+
+# -----------------------------
+# Page 8
+# -----------------------------
+elif page == pages[7]:
+    section_title(7, "Anchoring decisions", "What did each dealer consider appropriate for the same site?")
+    st.plotly_chart(
+        categorical_chart(df, "Anchoring solution", "Anchoring solutions"),
+        use_container_width=True,
+    )
+
+# -----------------------------
+# Page 9
+# -----------------------------
+elif page == pages[8]:
+    section_title(8, "What else did we add?", "Additional equipment can reveal different interpretations of the customer's real need.")
+
+    extras = df[["Dealer ID", "Other equipment"]].copy()
+    extras["Other equipment"] = extras["Other equipment"].apply(normalize_label)
+    st.dataframe(extras, use_container_width=True, hide_index=True)
+
+# -----------------------------
+# Page 10
+# -----------------------------
+elif page == pages[9]:
+    section_title(9, "Expected noise vs. actual noise")
+
+    expected = df["Expected difference %"].dropna()
+    if price_df.empty:
+        st.warning("No total prices have been entered.")
+    else:
+        prices = price_df["Total price EUR"]
+        min_price = prices.min()
+        max_price = prices.max()
+        actual_noise = ((max_price - min_price) / min_price * 100) if min_price > 0 else math.nan
+        expected_mean = expected.mean() if not expected.empty else math.nan
+
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown('<div class="tm-center">', unsafe_allow_html=True)
+            st.caption("WE EXPECTED")
+            st.markdown(
+                f'<div class="tm-big">{"—" if math.isnan(expected_mean) else f"{expected_mean:.0f}%"}</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown('</div>', unsafe_allow_html=True)
+        with c2:
+            st.markdown('<div class="tm-center">', unsafe_allow_html=True)
+            st.caption("THE ACTUAL PRICE NOISE WAS")
+            st.markdown(
+                f'<div class="tm-big">{"—" if math.isnan(actual_noise) else f"{actual_noise:.0f}%"}</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        st.markdown("---")
+        st.markdown(
+            """
+            <div class="tm-center">
+            <h2>Same information does not guarantee the same judgment.</h2>
+            <p style="font-size:1.1rem; opacity:.75;">
+            Which differences were justified — and which were noise?
+            </p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+# -----------------------------
+# Page 11
+# -----------------------------
+elif page == pages[10]:
+    st.title("All offers")
+    display_df = df.copy()
+    display_df["Transport & installation EUR"] = display_df["Transport & installation EUR"].apply(
+        lambda x: "" if pd.isna(x) else format_eur(x)
+    )
+    display_df["Total price EUR"] = display_df["Total price EUR"].apply(
+        lambda x: "" if pd.isna(x) else format_eur(x)
+    )
+    display_df["Expected difference %"] = display_df["Expected difference %"].apply(
+        lambda x: "" if pd.isna(x) else f"{x:.0f}%"
+    )
+    st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+    csv = df.to_csv(index=False).encode("utf-8-sig")
+    st.download_button(
+        "Download cleaned data as CSV",
+        data=csv,
+        file_name="noise_experiment_cleaned.csv",
+        mime="text/csv",
     )
