@@ -44,7 +44,6 @@ EXPECTED_COLUMNS = [
     "Booms",
     "Anchoring solution",
     "Other equipment",
-    "Transport & installation EUR",
     "Total price EUR",
     "Expected difference %",
 ]
@@ -142,8 +141,7 @@ def load_excel(file_bytes):
         if not clean_text(df.at[idx, "Dealer ID"]):
             df.at[idx, "Dealer ID"] = f"D{i:02d}"
 
-    for col in ["Transport & installation EUR", "Total price EUR"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
+    df["Total price EUR"] = pd.to_numeric(df["Total price EUR"], errors="coerce")
     df["Expected difference %"] = df["Expected difference %"].apply(parse_percent)
 
     for col in ["Dealer ID", "Pontoon solution", "Pontoon measurements", "Gangway measurements", "Booms", "Anchoring solution", "Other equipment"]:
@@ -234,14 +232,12 @@ if page == "Customer request":
         - Booms
         - Anchoring solution
         - Other equipment
-        - Transport & installation
         - Total price, EUR excl. VAT
         """)
 
 elif page == "All offers":
     section_title("All offers", f"{n_dealers} completed dealer offers")
     display_df = df.copy()
-    display_df["Transport & installation EUR"] = display_df["Transport & installation EUR"].apply(lambda x: "" if pd.isna(x) else format_eur(x))
     display_df["Total price EUR"] = display_df["Total price EUR"].apply(lambda x: "" if pd.isna(x) else format_eur(x))
     display_df["Expected difference %"] = display_df["Expected difference %"].apply(lambda x: "" if pd.isna(x) else f"{x:.0f}%")
     st.dataframe(display_df, use_container_width=True, hide_index=True, height=520)
@@ -252,24 +248,22 @@ elif page == "Pontoon solutions":
 
 elif page == "Pontoon measurements":
     section_title("Pontoon measurements", "Did we interpret the required floating section in the same way?")
-    show_df = df[["Dealer ID", "Pontoon solution", "Pontoon measurements"]].copy()
-    show_df["Pontoon solution"] = show_df["Pontoon solution"].apply(normalize_label)
-    show_df["Pontoon measurements"] = show_df["Pontoon measurements"].apply(normalize_label)
-    st.dataframe(show_df, use_container_width=True, hide_index=True, height=520)
+    st.plotly_chart(
+        categorical_chart(df, "Pontoon measurements", "Pontoon measurements"),
+        use_container_width=True,
+    )
 
 elif page == "Gangways & booms":
     section_title("Gangways & booms", "Different interpretations of the same technical brief.")
     c1, c2 = st.columns(2)
     with c1:
-        st.subheader("Gangway measurements")
-        gang = df[["Dealer ID", "Gangway measurements"]].copy()
-        gang["Gangway measurements"] = gang["Gangway measurements"].apply(normalize_label)
-        st.dataframe(gang, use_container_width=True, hide_index=True, height=485)
+        fig_gang = categorical_chart(df, "Gangway measurements", "Gangway measurements")
+        fig_gang.update_layout(height=390, margin=dict(l=10, r=20, t=55, b=25))
+        st.plotly_chart(fig_gang, use_container_width=True)
     with c2:
-        st.subheader("Booms")
-        booms = df[["Dealer ID", "Booms"]].copy()
-        booms["Booms"] = booms["Booms"].apply(normalize_label)
-        st.dataframe(booms, use_container_width=True, hide_index=True, height=485)
+        fig_booms = categorical_chart(df, "Booms", "Booms")
+        fig_booms.update_layout(height=390, margin=dict(l=10, r=20, t=55, b=25))
+        st.plotly_chart(fig_booms, use_container_width=True)
 
 elif page == "Anchoring":
     section_title("Anchoring decisions", "What did each dealer consider appropriate for the same site?")
